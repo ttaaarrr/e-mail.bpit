@@ -5,17 +5,20 @@ const multer = require("multer");
 const path = require("path");
 const emailService = require("../services/emailservice");
 const pool = require('../services/db'); 
+const iconv = require('iconv-lite');
 
 // ตั้งค่า multer สำหรับเก็บไฟล์แนบ
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, "uploads/"),
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
-    const safeName = file.originalname.replace(/\s+/g, "_");
-    cb(null, uniqueSuffix + "-" + safeName);
-  }
+ const originalName = file.originalname;
+const uniqueSuffix = Date.now() + "-" + Math.round(Math.random() * 1e9);
+const ext = path.extname(originalName);
+const base = path.basename(originalName, ext).replace(/\s+/g, "_");
+cb(null, `${uniqueSuffix}-${base}${ext}`);
+}
 });
-const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 } });
+const upload = multer({ storage, limits: { fileSize: 25 * 1024 * 1024 } });
 
 async function getRecipientsByArea(province, district) {
   const [rows] = await pool.execute(
@@ -76,13 +79,16 @@ router.post("/", upload.array("attachments"), async (req, res) => {
     }
 
     // จัดการ attachments จากไฟล์ที่อัพโหลด
-    let attachments = (req.files || []).map((file) => ({
-      filename: file.originalname,
-      savedFilename: file.filename,
-      url: `/uploads/${file.filename}`,
-      path: file.path,
-    }));
+let attachments = (req.files || []).map((file) => {
+  const originalName = iconv.decode(Buffer.from(file.originalname, 'binary'), 'utf-8');
 
+  return {
+    filename: originalName,
+    savedFilename: file.filename,
+    url: `/uploads/${file.filename}`,
+    path: file.path,
+  };
+});
     // รองรับ attachments แบบ base64 จาก req.body.attachments (ถ้ามี)
     if (req.body.attachments && typeof req.body.attachments === "string") {
       try {
